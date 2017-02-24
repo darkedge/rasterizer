@@ -100,8 +100,8 @@ void SetPixel(Texture texture, int x, int y, unsigned char r, unsigned char g, u
 void scene::Update(float dt) {
     dt;
     Texture texture = gl::GetTexture();
-    for (int x = 0; x < texture.width / 2; x++) {
-        for (int y = 0; y < texture.height / 2; y++) {
+    for (int x = 0; x < 40; x++) {
+        for (int y = 0; y < 40; y++) {
             SetPixel(texture, x, y, 255, 0, 0, 255);
         }
     }
