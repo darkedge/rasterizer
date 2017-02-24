@@ -8,6 +8,9 @@
 #include "rs_gl.h"
 #include "rs_scene.h"
 
+#define WIDTH 800
+#define HEIGHT 600
+
 #if 0
 struct WindowEvent {
     HWND hWnd;
@@ -56,38 +59,70 @@ public:
 
 static HWND hwnd;
 static HDC hdc;
-static HANDLE shouldClose;
+static HANDLE windowClose;
+static HANDLE resize;
+static CRITICAL_SECTION cs_resize;
 //static EventQueue eventQueue;
+static int width, height;
 static GLFWwindow* window;
+static LARGE_INTEGER lastTime, perfFreq;
+
+float CalculateDeltaTime() {
+    LARGE_INTEGER currentTime;
+    QueryPerformanceCounter(&currentTime);
+    float deltaTime = float(currentTime.QuadPart - lastTime.QuadPart) / float(perfFreq.QuadPart);
+    // Breakpoint guard
+    if (deltaTime > 1.0f) {
+        deltaTime = 1.0f / 60.0f;
+    }
+    lastTime = currentTime;
+    return deltaTime;
+}
 
 unsigned int __stdcall RenderThread(void*) {
-    glfwMakeContextCurrent(window);
-    glfwSwapInterval(0);
-
-    gl::Init(hdc);
-
-    float i = 0.0f;
-    float j = 0.0001f;
-    while (WaitForSingleObject(shouldClose, 0) == WAIT_TIMEOUT) {
-#if 0
-        WindowEvent message;
-        while (eventQueue.Pop(&message)) {
-            // TODO
-        }
+    // Thread name
+#ifdef _DEBUG
+    const DWORD MS_VC_EXCEPTION = 0x406D1388;
+#pragma pack(push,8)  
+    typedef struct tagTHREADNAME_INFO
+    {
+        DWORD dwType; // Must be 0x1000.  
+        LPCSTR szName; // Pointer to name (in user addr space).  
+        DWORD dwThreadID; // Thread ID (-1=caller thread).  
+        DWORD dwFlags; // Reserved for future use, must be zero.  
+    } THREADNAME_INFO;
+#pragma pack(pop)  
+    THREADNAME_INFO info;
+    info.dwType = 0x1000;
+    info.szName = "Render Thread";
+    info.dwThreadID = -1;
+    info.dwFlags = 0;
+#pragma warning(push)
+#pragma warning(disable: 6320 6322)
+    __try {
+        RaiseException(MS_VC_EXCEPTION, 0, sizeof(info) / sizeof(ULONG_PTR), (ULONG_PTR*)&info);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {}
+#pragma warning(pop)
 #endif
+    glfwMakeContextCurrent(window);
+    scene::Load();
+    QueryPerformanceFrequency(&perfFreq);
+    QueryPerformanceCounter(&lastTime);
+    
+    while (WaitForSingleObject(windowClose, 0) == WAIT_TIMEOUT) {
+        // Resize
+        if (WaitForSingleObject(resize, 0) == WAIT_OBJECT_0) {
+            EnterCriticalSection(&cs_resize);
+            gl::Resize(width, height);
+            LeaveCriticalSection(&cs_resize);
+        }
 
-        i += j;
-        
-        if(i > 1.0f) {
-            i = 1.0f;
-            j = -j;
-        }
-        if (i < 0.0f) {
-            i = 0.0f;
-            j = -j;
-        }
-        glClearColor(i, 0.0f, 0.0f, 1.0f);
+        // TODO: Remove after full-screen drawing
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
+        scene::Update(CalculateDeltaTime());
+        gl::Render();
         glfwSwapBuffers(window);
     }
 
@@ -99,7 +134,14 @@ void ErrorCallback(int32_t, const char *description) {
     printf("%s\n", description);
 }
 void WindowCloseCallback(GLFWwindow*) {
-    SetEvent(shouldClose);
+    SetEvent(windowClose);
+}
+void FramebufferSizeCallback(GLFWwindow*, int x, int y) {
+    EnterCriticalSection(&cs_resize);
+    width = x;
+    height = y;
+    LeaveCriticalSection(&cs_resize);
+    SetEvent(resize);
 }
 
 int main() {
@@ -113,21 +155,33 @@ int main() {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_COMPAT_PROFILE);
 
-    window = glfwCreateWindow(800, 600, "Rasterizer", NULL, NULL);
+    window = glfwCreateWindow(WIDTH, HEIGHT, "Rasterizer", NULL, NULL);
     if (!window) {
         glfwTerminate();
         return 1;
     }
 
+    glfwMakeContextCurrent(window);
+    glfwSwapInterval(0);
+    gl::Init(WIDTH, HEIGHT);
+    glfwMakeContextCurrent(NULL);
+
     glfwSetWindowCloseCallback(window, WindowCloseCallback);
+    glfwSetFramebufferSizeCallback(window, FramebufferSizeCallback);
 
-    shouldClose = CreateEvent(NULL, TRUE, FALSE, NULL);
-    HANDLE thread = (HANDLE)_beginthreadex(NULL, 0, RenderThread, NULL, 0, NULL);
+    windowClose = CreateEvent(NULL, TRUE, FALSE, NULL);
+    resize = CreateEvent(NULL, FALSE, FALSE, NULL);
+    InitializeCriticalSection(&cs_resize);
+    HANDLE thread = (HANDLE) _beginthreadex(NULL, 0, RenderThread, NULL, 0, NULL);
 
-    while ((WaitForSingleObject(shouldClose, 0) == WAIT_TIMEOUT)) {
+    while ((WaitForSingleObject(windowClose, 0) == WAIT_TIMEOUT)) {
         glfwWaitEvents();
     }
+    WaitForSingleObject(thread, INFINITE);
 
+    CloseHandle(windowClose);
+    CloseHandle(resize);
+    DeleteCriticalSection(&cs_resize);
     glfwDestroyWindow(window);
     glfwTerminate();
 

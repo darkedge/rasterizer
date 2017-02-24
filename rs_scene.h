@@ -2,5 +2,5 @@
 
 namespace scene {
     void Load();
-    void Update();
+    void Update(float dt);
 }

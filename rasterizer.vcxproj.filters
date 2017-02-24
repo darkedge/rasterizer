@@ -47,5 +47,8 @@
     <ClInclude Include="rs_rasterizer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="rs_texture.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
