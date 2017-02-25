@@ -7,11 +7,18 @@
 #include "stb_image.h"
 #pragma warning(pop)
 
+#include "vectormath/SSE/cpp/vectormath_aos.h"
+using namespace Vectormath::Aos;
+
 #include "rs_texture.h"
 #include "rs_gl.h"
 #include "rs_scene.h"
 
-class Model {
+struct Vertex {
+    Vector3 a;
+};
+
+struct Model {
     std::vector<float> xs;
     std::vector<float> ys;
     std::vector<float> zs;
@@ -19,7 +26,6 @@ class Model {
     std::vector<float> vs;
     size_t size;
 
-public:
     void PushBack(float x, float y, float z, float u, float v) {
         xs.push_back(x);
         ys.push_back(y);
@@ -31,7 +37,7 @@ public:
 };
 
 static Model model;
-static Texture texture;
+static Texture material;
 
 void scene::Load() {
     tinyobj::attrib_t attrib;
@@ -80,8 +86,8 @@ void scene::Load() {
 
     for (size_t i = 0; i < materials.size(); i++) {
         std::string file = "teapot/" + materials[i].diffuse_texname;
-        texture.data = stbi_load(file.c_str(), &texture.width, &texture.height, &texture.numComponents, 0);
-        assert(texture.data);
+        material.data = stbi_load(file.c_str(), &material.width, &material.height, &material.numComponents, 0);
+        assert(material.data);
     }
 }
 
@@ -104,5 +110,9 @@ void scene::Update(float dt) {
         for (int y = 0; y < 40; y++) {
             SetPixel(texture, x, y, 255, 0, 0, 255);
         }
+    }
+
+    for (int i = 0; i < model.size; i += 3) {
+        
     }
 }
